@@ -829,8 +829,15 @@ function isPartialMatch(typedChar, targetChar) {
   // 목표가 비한글이면 엄격 일치만
   if (!isTargetHangul && !isTargetJamo) return typedChar === targetChar;
 
-  // 3. 목표가 단독 자모(ㄱ, ㅏ 등)인 경우
-  if (isTargetJamo) return typedChar === targetChar;
+  // 3. 목표가 단독 자모(ㄱ, ㅏ, ㄲ, ㅘ 등)인 경우
+  if (isTargetJamo) {
+    // 완전 일치는 위에서 체크됨
+    // 쌍자음 조합 중간: 목표 'ㄲ'에 'ㄱ' 입력, 'ㄸ'에 'ㄷ' 등 허용
+    if (isTypedJamo && isDoubleConsonantBase(typedChar, targetChar)) return true;
+    // 이중모음 조합 중간: 목표 'ㅘ'에 'ㅗ' 입력 등 허용
+    if (isTypedJamo && isDiphthongBase(typedChar, targetChar)) return true;
+    return false;
+  }
 
   // 4. 목표가 완성형 한글
   const td = decomposeChar(targetChar);
@@ -848,15 +855,32 @@ function isPartialMatch(typedChar, targetChar) {
 
   // 중성 검사
   if (yd.jung !== td.jung) {
-    // 복합모음 조합 진행 중인지
     if (isComposableJung(yd.jung, td.jung)) return yd.jong === '';
     return false;
   }
 
   // 중성까지 일치 → 종성 검사
-  if (yd.jong === '') return true; // 조합 중 (종성 미입력)
-  if (yd.jong === td.jong) return true; // 완전 일치
-  return isComposableJong(yd.jong, td.jong); // 복합종성 조합 중
+  if (yd.jong === '') return true;
+  if (yd.jong === td.jong) return true;
+  return isComposableJong(yd.jong, td.jong);
+}
+
+// 쌍자음 조합 중간 단계 (예: 'ㄲ' 입력 중에 'ㄱ'이 먼저 들어옴)
+function isDoubleConsonantBase(typed, target) {
+  const doubleMap = {
+    'ㄲ': 'ㄱ', 'ㄸ': 'ㄷ', 'ㅃ': 'ㅂ', 'ㅆ': 'ㅅ', 'ㅉ': 'ㅈ'
+  };
+  return doubleMap[target] === typed;
+}
+
+// 이중모음 조합 중간 단계 (예: 'ㅘ' 입력 중에 'ㅗ'이 먼저 들어옴)
+function isDiphthongBase(typed, target) {
+  const diphMap = {
+    'ㅘ': ['ㅗ'], 'ㅙ': ['ㅗ','ㅐ','ㅘ'], 'ㅚ': ['ㅗ'],
+    'ㅝ': ['ㅜ'], 'ㅞ': ['ㅜ','ㅔ','ㅝ'], 'ㅟ': ['ㅜ'],
+    'ㅢ': ['ㅡ']
+  };
+  return diphMap[target] && diphMap[target].includes(typed);
 }
 
 function isComposableJung(partial, full) {
@@ -1064,9 +1088,16 @@ input.addEventListener('input', (e) => {
       renderProblem(result.value);
       updateProgress(result.value.length / state.currentProblem.length);
       triggerWrong(e.target);
-    } else {
-      renderProblem(result.value);
-      updateProgress(result.value.length / state.currentProblem.length);
+      return;
+    }
+
+    renderProblem(result.value);
+    updateProgress(result.value.length / state.currentProblem.length);
+
+    // 자모 단계: 조합 중이라도 정답과 일치하면 즉시 다음 문제로
+    // (한글 IME가 단일 자모를 확정하지 않고 조합 중 상태로 유지하는 문제 해결)
+    if (isJamoLevel() && checkComplete(result.value)) {
+      forceCompleteAndAdvance();
     }
     return;
   }
@@ -1092,6 +1123,33 @@ input.addEventListener('input', (e) => {
     handleCorrectComplete();
   }
 });
+
+// 자모 단계 여부 (목표가 1글자 자모)
+function isJamoLevel() {
+  return ['jamo', 'twin', 'diph'].includes(state.level);
+}
+
+// 조합 중 강제 완료 처리 - IME를 리셋하고 다음 문제로
+function forceCompleteAndAdvance() {
+  // 통계 업데이트
+  state.totalSolved++;
+  state.totalCorrect++;
+  state.problemIndex++;
+  updateStats();
+  soundCorrect();
+
+  // IME 조합 상태 강제 종료 (input을 잠깐 blur → focus)
+  const inp = document.getElementById('typingInput');
+  inp.blur();
+  isComposing = false;
+  lastCommittedValue = '';
+
+  setTimeout(() => {
+    if (!state.isGameActive) return;
+    loadProblem();
+    inp.focus();
+  }, 400);
+}
 
 // 붙여넣기·드래그앤드롭 차단
 input.addEventListener('paste', (e) => e.preventDefault());
