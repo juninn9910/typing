@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>타자 연습 게임</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+  :root {
+    --deep-bg: #0a1628;
+    --deep-bg-2: #0d1f3a;
+    --navy: #1a3a5c;
+    --cyan: #4fc3f7;
+    --cyan-light: #81d4fa;
+    --cyan-glow: rgba(79, 195, 247, 0.4);
+    --text-light: #e1f5fe;
+    --text-soft: #b3e5fc;
+  }
+
+  html, body {
+    height: 100%;
+    font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .screen {
+    width: 100vw; height: 100vh;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    position: relative;
+  }
+  .screen.active { display: flex; }
+
+  /* ========== 시작/결과 화면 (딥블루 우주 톤) ========== */
+  #startScreen, #resultScreen {
+    background:
+      radial-gradient(ellipse at top, #1a3a5c 0%, transparent 60%),
+      radial-gradient(ellipse at bottom, #0d2847 0%, transparent 60%),
+      linear-gradient(135deg, #0a1628 0%, #0d1f3a 100%);
+    overflow: hidden;
+  }
+
+  #startScreen::before, #resultScreen::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(1px 1px at 20% 30%, #fff, transparent),
+      radial-gradient(1px 1px at 60% 70%, #fff, transparent),
+      radial-gradient(1px 1px at 80% 10%, #81d4fa, transparent),
+      radial-gradient(2px 2px at 30% 80%, #fff, transparent),
+      radial-gradient(1px 1px at 90% 50%, #4fc3f7, transparent),
+      radial-gradient(1px 1px at 15% 60%, #fff, transparent),
+      radial-gradient(2px 2px at 70% 20%, #81d4fa, transparent),
+      radial-gradient(1px 1px at 45% 45%, #fff, transparent);
+    background-size: 100% 100%;
+    opacity: 0.6;
+    animation: twinkle 4s ease-in-out infinite alternate;
+  }
+  @keyframes twinkle {
+    0% { opacity: 0.4; }
+    100% { opacity: 0.85; }
+  }
+
+  #startScreen h1 {
+    color: var(--text-light);
+    font-size: 52px;
+    margin-bottom: 18px;
+    text-shadow:
+      0 0 20px var(--cyan-glow),
+      0 0 40px rgba(79, 195, 247, 0.3);
+    position: relative;
+    z-index: 1;
+    letter-spacing: 2px;
+  }
+  #startScreen p {
+    color: var(--text-soft);
+    font-size: 20px;
+    margin-bottom: 50px;
+    opacity: 0.9;
+    position: relative;
+    z-index: 1;
+  }
+  .level-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 22px;
+    width: 90%;
+    max-width: 820px;
+    position: relative;
+    z-index: 1;
+  }
+  .level-btn {
+    background: linear-gradient(135deg, rgba(26, 58, 92, 0.85), rgba(13, 31, 58, 0.9));
+    border: 2px solid rgba(79, 195, 247, 0.3);
+    border-radius: 22px;
+    padding: 38px 20px;
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--text-light);
+    cursor: pointer;
+    box-shadow:
+      0 0 24px rgba(79, 195, 247, 0.15),
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    transition: all 0.25s;
+    min-height: 150px;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+  }
+  .level-btn:hover {
+    border-color: var(--cyan);
+    box-shadow:
+      0 0 36px var(--cyan-glow),
+      0 8px 32px rgba(0, 0, 0, 0.4),
+      inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  }
+  .level-btn:active { transform: scale(0.96); }
+  .level-btn .emoji {
+    display: block;
+    font-size: 46px;
+    margin-bottom: 10px;
+    filter: drop-shadow(0 0 8px var(--cyan-glow));
+  }
+  .level-btn .sub {
+    display: block;
+    font-size: 15px;
+    font-weight: 400;
+    color: var(--text-soft);
+    margin-top: 8px;
+    opacity: 0.85;
+  }
+
+  /* ========== 게임 화면 (밝고 가독성 우선) ========== */
+  #gameScreen {
+    background: linear-gradient(180deg, #f0f7ff 0%, #e3f2fd 100%);
+    justify-content: flex-start;
+    padding: 0;
+  }
+  .top-bar {
+    width: 100%;
+    background: linear-gradient(135deg, #0a1628 0%, #1a3a5c 100%);
+    padding: 16px 25px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow:
+      0 2px 12px rgba(10, 22, 40, 0.25),
+      0 0 20px rgba(79, 195, 247, 0.1);
+    border-bottom: 2px solid var(--cyan);
+  }
+  .back-btn {
+    background: linear-gradient(135deg, #546e7a, #37474f);
+    color: #fff;
+    border: none;
+    padding: 12px 22px;
+    border-radius: 10px;
+    font-size: 17px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  }
+  .back-btn:active { transform: scale(0.95); }
+  .stats {
+    display: flex;
+    gap: 28px;
+    font-size: 18px;
+    font-weight: 600;
+  }
+  .stat-item { color: var(--text-light); }
+  .stat-item span {
+    color: var(--cyan);
+    font-weight: 800;
+    text-shadow: 0 0 10px var(--cyan-glow);
+  }
+  #timer {
+    color: var(--cyan-light);
+    font-size: 26px;
+    font-weight: 800;
+    text-shadow: 0 0 12px var(--cyan-glow);
+    font-variant-numeric: tabular-nums;
+  }
+  #timer.warning {
+    color: #ff5252;
+    text-shadow: 0 0 12px rgba(255, 82, 82, 0.6);
+    animation: pulse 1s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.08); }
+  }
+
+  .game-area {
+    flex: 1;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 30px 20px;
+    gap: 28px;
+  }
+  .problem-card {
+    background: #fff;
+    border-radius: 24px;
+    padding: 55px 40px;
+    box-shadow:
+      0 8px 28px rgba(26, 58, 92, 0.12),
+      0 0 0 1px rgba(79, 195, 247, 0.2);
+    width: 90%;
+    max-width: 920px;
+    text-align: center;
+    min-height: 180px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .problem-text {
+    font-size: 56px;
+    font-weight: 700;
+    letter-spacing: 4px;
+    line-height: 1.4;
+    word-break: keep-all;
+    color: #1a3a5c;
+  }
+  .problem-text.small { font-size: 40px; }
+  .problem-text .char {
+    display: inline-block;
+    padding: 0 2px;
+    transition: all 0.15s;
+  }
+  .problem-text .char.done {
+    color: #26c6da;
+    text-shadow: 0 0 8px rgba(38, 198, 218, 0.3);
+  }
+  .problem-text .char.current {
+    background: linear-gradient(135deg, #fff9c4, #fff176);
+    border-radius: 8px;
+    color: #ef6c00;
+    box-shadow: 0 0 16px rgba(255, 193, 7, 0.5);
+  }
+  .problem-text .char.pending { color: #b0bec5; }
+
+  .input-area { width: 90%; max-width: 920px; }
+  #typingInput {
+    width: 100%;
+    font-size: 40px;
+    padding: 25px 30px;
+    border: 3px solid var(--cyan);
+    border-radius: 16px;
+    outline: none;
+    text-align: center;
+    font-family: inherit;
+    background: #fff;
+    letter-spacing: 2px;
+    color: #1a3a5c;
+    font-weight: 600;
+    box-shadow:
+      0 0 0 4px rgba(79, 195, 247, 0.15),
+      0 4px 16px rgba(26, 58, 92, 0.1);
+    transition: all 0.2s;
+  }
+  #typingInput:focus {
+    border-color: #29b6f6;
+    box-shadow:
+      0 0 0 5px rgba(79, 195, 247, 0.25),
+      0 0 24px rgba(79, 195, 247, 0.3);
+  }
+  #typingInput.shake {
+    animation: shake 0.3s;
+    border-color: #f44336;
+    box-shadow: 0 0 0 5px rgba(244, 67, 54, 0.2);
+  }
+  @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-8px); }
+    75% { transform: translateX(8px); }
+  }
+
+  .progress-bar {
+    width: 90%;
+    max-width: 920px;
+    height: 12px;
+    background: rgba(26, 58, 92, 0.08);
+    border-radius: 6px;
+    overflow: hidden;
+    box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--cyan), var(--cyan-light));
+    width: 0%;
+    transition: width 0.3s;
+    box-shadow: 0 0 12px var(--cyan-glow);
+  }
+
+  /* ========== 결과 화면 ========== */
+  .result-card {
+    background: linear-gradient(135deg, rgba(26, 58, 92, 0.9), rgba(13, 31, 58, 0.95));
+    border: 2px solid rgba(79, 195, 247, 0.4);
+    border-radius: 28px;
+    padding: 50px 55px;
+    box-shadow:
+      0 0 60px rgba(79, 195, 247, 0.2),
+      0 20px 50px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.1);
+    text-align: center;
+    max-width: 720px;
+    width: 90%;
+    position: relative;
+    z-index: 1;
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .result-card h2 {
+    font-size: 42px;
+    color: var(--text-light);
+    margin-bottom: 10px;
+    text-shadow: 0 0 20px var(--cyan-glow);
+  }
+  .result-level {
+    font-size: 19px;
+    color: var(--cyan-light);
+    margin-bottom: 32px;
+    opacity: 0.9;
+  }
+  .result-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+    margin-bottom: 28px;
+  }
+  .result-item {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(79, 195, 247, 0.2);
+    padding: 24px 15px;
+    border-radius: 16px;
+  }
+  .result-item .label {
+    font-size: 15px;
+    color: var(--text-soft);
+    margin-bottom: 8px;
+    opacity: 0.85;
+  }
+  .result-item .value {
+    font-size: 38px;
+    font-weight: 800;
+    color: var(--cyan);
+    text-shadow: 0 0 16px var(--cyan-glow);
+    font-variant-numeric: tabular-nums;
+  }
+  .result-actions {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .result-actions button {
+    padding: 16px 30px;
+    font-size: 17px;
+    font-weight: 700;
+    border: none;
+    border-radius: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .btn-primary {
+    background: linear-gradient(135deg, var(--cyan), #29b6f6);
+    color: #0a1628;
+    box-shadow: 0 0 20px var(--cyan-glow), 0 4px 12px rgba(0,0,0,0.3);
+  }
+  .btn-secondary {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-light);
+    border: 1px solid rgba(79, 195, 247, 0.3) !important;
+  }
+  .result-actions button:active { transform: scale(0.96); }
+
+  .screenshot-guide {
+    background: rgba(255, 193, 7, 0.12);
+    border: 1px dashed rgba(255, 193, 7, 0.5);
+    border-radius: 12px;
+    padding: 14px 20px;
+    margin: 18px 0 24px;
+    font-size: 15px;
+    color: #ffe082;
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+
+<div id="startScreen" class="screen active">
+  <h1>⌨️ 타자 연습 게임</h1>
+  <p>수준에 맞는 단계를 선택하세요 · 20분 연습</p>
+  <div class="level-grid">
+    <button class="level-btn" data-level="jamo">
+      <span class="emoji">🔤</span>
+      자음 · 모음
+      <span class="sub">기본 자모 익히기</span>
+    </button>
+    <button class="level-btn" data-level="word">
+      <span class="emoji">📝</span>
+      단어
+      <span class="sub">일상 단어 연습</span>
+    </button>
+    <button class="level-btn" data-level="easy">
+      <span class="emoji">💬</span>
+      쉬운 문장
+      <span class="sub">짧은 문장 연습</span>
+    </button>
+    <button class="level-btn" data-level="hard">
+      <span class="emoji">📖</span>
+      긴 문장
+      <span class="sub">긴 문장 도전</span>
+    </button>
+  </div>
+</div>
+
+<div id="gameScreen" class="screen">
+  <div class="top-bar">
+    <button class="back-btn" id="backBtn">← 돌아가기</button>
+    <div class="stats">
+      <div class="stat-item">문제 <span id="problemCount">0</span></div>
+      <div class="stat-item">정답 <span id="correctCount">0</span></div>
+      <div class="stat-item">정확도 <span id="accuracy">100</span>%</div>
+    </div>
+    <div id="timer">20:00</div>
+  </div>
+  <div class="game-area">
+    <div class="problem-card">
+      <div class="problem-text" id="problemText"></div>
+    </div>
+    <div class="input-area">
+      <input type="text" id="typingInput" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="여기에 입력하세요">
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+  </div>
+</div>
+
+<div id="resultScreen" class="screen">
+  <div class="result-card">
+    <h2>🎉 연습 완료!</h2>
+    <div class="result-level" id="resultLevel"></div>
+    <div class="result-grid">
+      <div class="result-item">
+        <div class="label">푼 문제</div>
+        <div class="value" id="finalProblems">0</div>
+      </div>
+      <div class="result-item">
+        <div class="label">맞힌 문제</div>
+        <div class="value" id="finalCorrect">0</div>
+      </div>
+      <div class="result-item">
+        <div class="label">정확도</div>
+        <div class="value"><span id="finalAccuracy">0</span>%</div>
+      </div>
+      <div class="result-item">
+        <div class="label">분당 타수 (CPM)</div>
+        <div class="value" id="finalCpm">0</div>
+      </div>
+    </div>
+    <div class="screenshot-guide">
+      📸 결과 화면을 <b>스크린샷</b>으로 찍어 Padlet에 올려주세요!
+    </div>
+    <div class="result-actions">
+      <button class="btn-primary" id="retryBtn">다시 하기</button>
+      <button class="btn-secondary" id="homeBtn">처음으로</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const PROBLEMS = {
+  jamo: [
+    'ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ',
+    'ㄲ','ㄸ','ㅃ','ㅆ','ㅉ',
+    'ㅏ','ㅑ','ㅓ','ㅕ','ㅗ','ㅛ','ㅜ','ㅠ','ㅡ','ㅣ',
+    'ㅐ','ㅒ','ㅔ','ㅖ','ㅘ','ㅙ','ㅚ','ㅝ','ㅞ','ㅟ','ㅢ'
+  ],
+  word: [
+    // 학생 이름 5
+    '박지후','윤승원','신서연','이한수','김현민',
+    // 학교 생활 20
+    '학교','교실','선생님','친구','책상','의자','연필','지우개','공책','가방',
+    '칠판','시계','창문','교과서','필통','급식','식판','우유','수저','컵',
+    // 위생·생활 시설 10
+    '화장실','세면대','비누','수건','거울','치약','칫솔','샤워','빗자루','쓰레기통',
+    // 놀이·운동 10
+    '운동장','그네','미끄럼틀','계단','복도','시소','축구','농구','달리기','줄넘기',
+    // 집·가정 10
+    '집','방','침대','이불','베개','현관','신발','양말','우산','장갑',
+    // 교통 10
+    '버스','지하철','횡단보도','신호등','자전거','택시','기차','비행기','정류장','기차역',
+    // 음식 10
+    '밥','국','김치','반찬','과일','사과','바나나','빵','물','주스',
+    // 날씨·자연 5
+    '해','달','별','구름','바람',
+    // 감정·인사 5
+    '안녕','사랑','고마워','미안해','행복'
+  ],
+  easy: [
+    // 인사·감정
+    '안녕하세요.','안녕히 가세요.','반갑습니다.','고맙습니다.','미안합니다.',
+    '오늘 기분이 좋아요.','오늘은 조금 피곤해요.','정말 즐거워요.','기분이 나빠요.','너무 재미있어요.',
+    // 학교 일과
+    '학교에 갑니다.','교실로 들어가요.','선생님께 인사해요.','친구와 놀아요.','책을 읽어요.',
+    '공부를 열심히 해요.','숙제를 다 했어요.','가방을 메고 가요.','수업을 시작해요.','수업이 끝났어요.',
+    // 식사·위생
+    '점심을 먹어요.','아침밥을 먹어요.','물을 마셔요.','우유를 마셔요.','손을 씻어요.',
+    '이를 닦아요.','세수를 해요.','수건으로 닦아요.','수저를 사용해요.','식판을 반납해요.',
+    // 교통·이동
+    '신발을 신어요.','버스를 타요.','지하철을 타요.','횡단보도를 건너요.','신호등을 봐요.',
+    '자전거를 타요.','집으로 돌아가요.','정류장에서 기다려요.','길을 건너요.','천천히 걸어요.',
+    // 학생 이름 포함
+    '지후가 웃어요.','승원이와 공부해요.','서연이는 착해요.','한수가 달려요.','현민이는 친절해요.',
+    '지후가 책을 읽어요.','승원이가 밥을 먹어요.','서연이가 노래를 불러요.','한수가 공을 차요.','현민이가 그림을 그려요.',
+    // 생활 기본
+    '문을 열어요.','문을 닫아요.','자리에 앉아요.','조용히 해요.','기다려 주세요.',
+    '도와 주세요.','잘 자요.','잘 먹겠습니다.','잘 먹었습니다.','사랑합니다.'
+  ],
+  hard: [
+    // 일상·생활 습관
+    '아침에 일어나서 세수를 하고 학교에 갑니다.',
+    '매일 저녁에 일찍 잠자리에 드는 것이 좋습니다.',
+    '아침밥을 거르지 않고 꼭 챙겨 먹어야 합니다.',
+    '식사를 한 뒤에는 반드시 이를 닦아야 합니다.',
+    '잠자기 전에는 깨끗하게 씻고 잠옷으로 갈아입습니다.',
+    '일찍 자고 일찍 일어나는 생활 습관이 중요합니다.',
+    '음식을 먹기 전에는 깨끗하게 손을 씻습니다.',
+    '감기에 걸리지 않으려면 손을 자주 씻어야 합니다.',
+    '비 오는 날에는 우산을 꼭 챙겨서 나갑니다.',
+    '추운 겨울에는 따뜻한 옷을 입고 장갑을 낍니다.',
+
+    // 학교·수업
+    '오늘은 친구들과 운동장에서 즐겁게 놀았습니다.',
+    '수업 시간에는 선생님 말씀을 잘 들어야 합니다.',
+    '급식 시간에는 바른 자세로 음식을 먹어야 합니다.',
+    '친구들과 사이좋게 지내는 것이 매우 중요합니다.',
+    '선생님께서 내주신 숙제를 꼼꼼하게 해야 합니다.',
+    '학교에서는 정해진 규칙을 잘 지켜야 합니다.',
+    '발표를 할 때는 큰 목소리로 또박또박 말합니다.',
+    '책을 읽을 때는 조용한 자리에서 집중해서 읽습니다.',
+    '체육 시간에는 안전에 항상 주의해야 합니다.',
+    '친구의 물건을 빌릴 때는 미리 허락을 받아야 합니다.',
+
+    // 안전·교통
+    '횡단보도를 건널 때는 좌우를 잘 살펴야 합니다.',
+    '버스를 탈 때는 차례를 지켜서 타야 합니다.',
+    '지하철 안에서는 큰 소리로 떠들지 않습니다.',
+    '자전거를 탈 때는 반드시 안전모를 써야 합니다.',
+    '신호등이 초록불로 바뀌면 천천히 건너갑니다.',
+    '차도에서는 절대로 뛰어다니면 안 됩니다.',
+    '길을 걸을 때는 휴대폰을 보지 않습니다.',
+    '엘리베이터를 탈 때는 내리는 사람을 먼저 기다립니다.',
+    '계단을 오를 때는 난간을 잡고 천천히 올라갑니다.',
+    '낯선 사람을 따라가면 절대로 안 됩니다.',
+
+    // 학생 이름 포함
+    '지후와 승원이는 도서관에서 책을 빌렸습니다.',
+    '서연이는 친구들에게 항상 친절하게 말합니다.',
+    '한수는 매일 아침 일찍 일어나서 운동을 합니다.',
+    '현민이는 숙제를 끝내고 가족과 저녁을 먹습니다.',
+    '지후는 주말마다 가족과 함께 공원에 갑니다.',
+    '승원이는 교실 청소를 열심히 도와주었습니다.',
+    '서연이는 동생에게 책을 읽어주는 것을 좋아합니다.',
+    '한수는 친구가 넘어졌을 때 얼른 일으켜 주었습니다.',
+    '현민이는 선생님께 궁금한 것을 또박또박 물어봅니다.',
+    '지후와 서연이는 함께 그림을 그리며 놀았습니다.',
+
+    // 예절·공공생활
+    '공공장소에서는 다른 사람을 배려해야 합니다.',
+    '쓰레기는 반드시 쓰레기통에 버려야 합니다.',
+    '약속을 했으면 반드시 지키는 것이 중요합니다.',
+    '친구가 어려울 때는 서로 도와주어야 합니다.',
+    '건강을 위해서 골고루 음식을 먹어야 합니다.',
+    '어른을 만나면 바르게 인사를 해야 합니다.',
+    '도서관에서는 조용히 책을 읽어야 합니다.',
+    '음식점에서는 차분하게 자리에 앉아 기다립니다.',
+    '친구의 이야기를 끝까지 들어주는 것이 예의입니다.',
+    '잘못을 했을 때는 솔직하게 사과할 줄 알아야 합니다.',
+
+    // 계절·자연
+    '봄이 되면 길가에 예쁜 꽃들이 활짝 핍니다.',
+    '여름에는 물놀이를 하고 시원한 수박을 먹습니다.',
+    '가을에는 나뭇잎이 빨갛고 노랗게 물듭니다.',
+    '겨울에는 눈이 내려서 눈사람을 만들 수 있습니다.',
+    '날씨가 맑은 날에는 공원에 나가서 산책을 합니다.',
+    '비가 오는 날에는 집에서 책을 읽는 것도 좋습니다.',
+    '바람이 많이 부는 날에는 모자를 꼭 챙깁니다.',
+    '햇볕이 강한 날에는 자외선 차단제를 발라야 합니다.',
+    '태풍이 오는 날에는 밖에 나가지 않는 것이 좋습니다.',
+    '꽃이 피면 벌과 나비가 꿀을 모으러 날아옵니다.'
+  ]
+};
+
+const LEVEL_NAMES = { jamo: '자음 · 모음', word: '단어', easy: '쉬운 문장', hard: '긴 문장' };
+
+let state = {
+  level: null, currentProblem: '', problemQueue: [], problemIndex: 0,
+  totalSolved: 0, totalCorrect: 0,
+  startTime: 0, timerInterval: null, timeLeft: 20 * 60, isGameActive: false
+};
+
+// IME 조합 상태 (전역 - 여러 함수에서 참조)
+let isComposing = false;
+let lastCommittedValue = '';
+
+const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+const JUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
+const JONG = ['','ㄱ','ㄲ','ㄳ','ㄴ','ㄵ','ㄶ','ㄷ','ㄹ','ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ','ㅁ','ㅂ','ㅄ','ㅅ','ㅆ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
+
+function decomposeChar(ch) {
+  const code = ch.charCodeAt(0);
+  if (code >= 0xAC00 && code <= 0xD7A3) {
+    const idx = code - 0xAC00;
+    return {
+      cho: CHO[Math.floor(idx / 588)],
+      jung: JUNG[Math.floor((idx % 588) / 28)],
+      jong: JONG[idx % 28]
+    };
+  }
+  return null;
+}
+
+let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) {
+    try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch(e) { audioCtx = null; }
+  }
+}
+function playTone(freq, duration, type='sine', volume=0.15) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(); osc.stop(audioCtx.currentTime + duration);
+}
+function soundCorrect() {
+  playTone(880, 0.1, 'sine', 0.12);
+  setTimeout(() => playTone(1320, 0.15, 'sine', 0.12), 80);
+}
+function soundWrong() { playTone(220, 0.15, 'square', 0.1); }
+function soundKey() { playTone(600, 0.04, 'sine', 0.06); }
+
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function startGame(level) {
+  // 이전 상태 완전 정리
+  if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
+  isComposing = false;
+  lastCommittedValue = '';
+
+  initAudio();
+  state.level = level;
+  state.problemQueue = shuffle(PROBLEMS[level]);
+  state.problemIndex = 0;
+  state.totalSolved = 0;
+  state.totalCorrect = 0;
+  state.startTime = Date.now();
+  state.timeLeft = 20 * 60;
+  state.isGameActive = true;
+
+  const problemText = document.getElementById('problemText');
+  if (level === 'hard') problemText.classList.add('small');
+  else problemText.classList.remove('small');
+
+  document.getElementById('timer').classList.remove('warning');
+  updateStats(); updateTimer(); loadProblem();
+  showScreen('gameScreen');
+
+  const input = document.getElementById('typingInput');
+  input.value = '';
+  input.classList.remove('shake');
+  // 태블릿 키보드 올라오기 위해 약간의 지연 후 포커스
+  setTimeout(() => input.focus(), 150);
+
+  state.timerInterval = setInterval(() => {
+    if (!state.isGameActive) return; // 방어
+    state.timeLeft--;
+    updateTimer();
+    // 60초 이하 진입 시 한 번만 경고 클래스 적용
+    if (state.timeLeft === 60) {
+      document.getElementById('timer').classList.add('warning');
+    }
+    if (state.timeLeft <= 0) {
+      endGame();
+    }
+  }, 1000);
+}
+
+function updateTimer() {
+  const m = Math.floor(state.timeLeft / 60);
+  const s = state.timeLeft % 60;
+  document.getElementById('timer').textContent =
+    `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+}
+
+function updateStats() {
+  document.getElementById('problemCount').textContent = state.totalSolved;
+  document.getElementById('correctCount').textContent = state.totalCorrect;
+  const acc = state.totalSolved === 0 ? 100 :
+    Math.round((state.totalCorrect / state.totalSolved) * 100);
+  document.getElementById('accuracy').textContent = acc;
+}
+
+function loadProblem() {
+  if (state.problemIndex >= state.problemQueue.length) {
+    state.problemQueue = shuffle(PROBLEMS[state.level]);
+    state.problemIndex = 0;
+  }
+  state.currentProblem = state.problemQueue[state.problemIndex];
+  renderProblem('');
+  const inp = document.getElementById('typingInput');
+  inp.value = '';
+  lastCommittedValue = '';
+  isComposing = false;
+  updateProgress(0);
+}
+
+function renderProblem(typed) {
+  const target = state.currentProblem;
+  const pt = document.getElementById('problemText');
+  let html = '';
+  for (let i = 0; i < target.length; i++) {
+    let cls = 'pending';
+    if (i < typed.length) cls = 'done';
+    else if (i === typed.length) cls = 'current';
+    const ch = target[i] === ' ' ? '&nbsp;' : target[i];
+    html += `<span class="char ${cls}">${ch}</span>`;
+  }
+  pt.innerHTML = html;
+}
+
+function updateProgress(ratio) {
+  document.getElementById('progressFill').style.width = (ratio * 100) + '%';
+}
+
+function isPartialMatch(typedChar, targetChar) {
+  // 1. 완전 일치
+  if (typedChar === targetChar) return true;
+
+  // 2. 목표가 비한글(공백, 문장부호, 숫자, 영문)인 경우 → 정확히 일치해야 함
+  const targetCode = targetChar.charCodeAt(0);
+  const typedCode = typedChar.charCodeAt(0);
+  const isTargetHangul = (targetCode >= 0xAC00 && targetCode <= 0xD7A3);
+  const isTargetJamo = (targetCode >= 0x3131 && targetCode <= 0x318E);
+  const isTypedJamo = (typedCode >= 0x3131 && typedCode <= 0x318E);
+
+  // 목표가 비한글이면 엄격 일치만
+  if (!isTargetHangul && !isTargetJamo) return typedChar === targetChar;
+
+  // 3. 목표가 단독 자모(ㄱ, ㅏ 등)인 경우
+  if (isTargetJamo) return typedChar === targetChar;
+
+  // 4. 목표가 완성형 한글
+  const td = decomposeChar(targetChar);
+  if (!td) return typedChar === targetChar; // 방어 코드
+
+  // 4-1. 입력이 자모 하나 → 목표의 초성과 비교
+  if (isTypedJamo) return typedChar === td.cho;
+
+  // 4-2. 입력이 완성형 한글 → 분해해서 비교
+  const yd = decomposeChar(typedChar);
+  if (!yd) return false;
+
+  // 초성 일치 필수
+  if (yd.cho !== td.cho) return false;
+
+  // 중성 검사
+  if (yd.jung !== td.jung) {
+    // 복합모음 조합 진행 중인지
+    if (isComposableJung(yd.jung, td.jung)) return yd.jong === '';
+    return false;
+  }
+
+  // 중성까지 일치 → 종성 검사
+  if (yd.jong === '') return true; // 조합 중 (종성 미입력)
+  if (yd.jong === td.jong) return true; // 완전 일치
+  return isComposableJong(yd.jong, td.jong); // 복합종성 조합 중
+}
+
+function isComposableJung(partial, full) {
+  const compounds = { 'ㅗ': ['ㅘ','ㅙ','ㅚ'], 'ㅜ': ['ㅝ','ㅞ','ㅟ'], 'ㅡ': ['ㅢ'] };
+  return compounds[partial] && compounds[partial].includes(full);
+}
+
+function isComposableJong(partial, full) {
+  const compounds = {
+    'ㄱ': ['ㄳ'], 'ㄴ': ['ㄵ','ㄶ'],
+    'ㄹ': ['ㄺ','ㄻ','ㄼ','ㄽ','ㄾ','ㄿ','ㅀ'], 'ㅂ': ['ㅄ']
+  };
+  return compounds[partial] && compounds[partial].includes(full);
+}
+
+function validateInput(value) {
+  const target = state.currentProblem;
+  if (value.length === 0) return { valid: true, value: '' };
+  const completedLen = value.length - 1;
+  for (let i = 0; i < completedLen; i++) {
+    if (value[i] !== target[i]) return { valid: false, value: target.substring(0, i) };
+  }
+  if (completedLen >= target.length) return { valid: false, value: target };
+  const lastChar = value[value.length - 1];
+  const targetAtPos = target[completedLen];
+  if (isPartialMatch(lastChar, targetAtPos)) return { valid: true, value: value };
+  return { valid: false, value: value.substring(0, completedLen) };
+}
+
+function checkComplete(value) { return value === state.currentProblem; }
+
+/* ===== IME 조합 상태 추적 =====
+ * 한글 IME는 조합 중간에도 input 이벤트를 발생시키므로
+ * 조합 중일 때는 부분 일치 허용, 조합 완료 시 엄격 검증 후 롤백한다.
+ * - compositionstart: 조합 시작 → 현재 확정된 value 기억
+ * - compositionend: 조합 완료 → 엄격 검증 후 오답이면 롤백
+ * - input (조합 외): 즉시 엄격 검증
+ *
+ * 참고: 태블릿·OS·키보드별로 이벤트 발생 순서가 다르므로
+ * 방어적으로 모든 이벤트에서 validateInput을 호출한다.
+ */
+const input = document.getElementById('typingInput');
+
+function triggerWrong(el) {
+  soundWrong();
+  el.classList.add('shake');
+  setTimeout(() => el.classList.remove('shake'), 300);
+}
+
+function handleCorrectComplete() {
+  state.totalSolved++;
+  state.totalCorrect++;
+  state.problemIndex++;
+  updateStats();
+  soundCorrect();
+  setTimeout(() => {
+    if (state.isGameActive) loadProblem();
+  }, 400);
+}
+
+input.addEventListener('compositionstart', () => {
+  isComposing = true;
+  lastCommittedValue = input.value;
+});
+
+input.addEventListener('compositionend', (e) => {
+  isComposing = false;
+  if (!state.isGameActive) return;
+
+  // 조합 완료 후 엄격 검증
+  const currentValue = e.target.value;
+  const previousValue = lastCommittedValue;
+  const result = validateInput(currentValue);
+
+  if (!result.valid) {
+    // 조합 완료된 글자가 틀림 → 롤백
+    e.target.value = result.value;
+    lastCommittedValue = result.value;
+    renderProblem(result.value);
+    updateProgress(result.value.length / state.currentProblem.length);
+    triggerWrong(e.target);
+    return;
+  }
+
+  // 유효한 입력 확정
+  lastCommittedValue = result.value;
+  renderProblem(result.value);
+  updateProgress(result.value.length / state.currentProblem.length);
+
+  // 새 글자가 확정되었을 때만 타이핑 소리 (조합 시작 전보다 길어졌으면)
+  if (result.value.length > previousValue.length) soundKey();
+
+  if (checkComplete(result.value)) {
+    handleCorrectComplete();
+  }
+});
+
+input.addEventListener('input', (e) => {
+  if (!state.isGameActive) return;
+
+  const currentValue = e.target.value;
+
+  if (isComposing) {
+    // 조합 중: 완성된 앞부분만 검증, 조합 중인 마지막 글자는 부분 일치 허용
+    const result = validateInput(currentValue);
+    if (!result.valid) {
+      // 조합 중에도 확정된 앞부분이 틀리면 즉시 롤백
+      // (예: 이전에 친 글자가 틀렸는데 지금 알아챈 경우)
+      e.target.value = result.value;
+      lastCommittedValue = result.value;
+      renderProblem(result.value);
+      updateProgress(result.value.length / state.currentProblem.length);
+      triggerWrong(e.target);
+    } else {
+      // 조합 진행 중 - 시각적 피드백만
+      renderProblem(result.value);
+      updateProgress(result.value.length / state.currentProblem.length);
+    }
+    return;
+  }
+
+  // 조합 외 입력 (영문, 숫자, 문장부호, 백스페이스 등)
+  const result = validateInput(currentValue);
+
+  if (!result.valid) {
+    e.target.value = result.value;
+    lastCommittedValue = result.value;
+    renderProblem(result.value);
+    updateProgress(result.value.length / state.currentProblem.length);
+    triggerWrong(e.target);
+    return;
+  }
+
+  lastCommittedValue = result.value;
+  renderProblem(result.value);
+  updateProgress(result.value.length / state.currentProblem.length);
+  if (result.value.length > 0) soundKey();
+
+  if (checkComplete(result.value)) {
+    handleCorrectComplete();
+  }
+});
+
+// 붙여넣기·드래그앤드롭 차단
+input.addEventListener('paste', (e) => e.preventDefault());
+input.addEventListener('drop', (e) => e.preventDefault());
+input.addEventListener('dragover', (e) => e.preventDefault());
+
+function endGame() {
+  if (!state.isGameActive) return; // 중복 호출 방어
+  state.isGameActive = false;
+  if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
+
+  // 입력창 초기화 (조합 상태 클리어)
+  const inp = document.getElementById('typingInput');
+  if (inp) {
+    inp.blur();
+    inp.value = '';
+  }
+  isComposing = false;
+
+  const elapsedMin = (Date.now() - state.startTime) / 60000;
+  const totalChars = calculateTotalCorrectChars();
+  const cpm = elapsedMin > 0 ? Math.round(totalChars / elapsedMin) : 0;
+
+  document.getElementById('resultLevel').textContent = `단계: ${LEVEL_NAMES[state.level]}`;
+  document.getElementById('finalProblems').textContent = state.totalSolved;
+  document.getElementById('finalCorrect').textContent = state.totalCorrect;
+  const acc = state.totalSolved === 0 ? 0 :
+    Math.round((state.totalCorrect / state.totalSolved) * 100);
+  document.getElementById('finalAccuracy').textContent = acc;
+  document.getElementById('finalCpm').textContent = cpm;
+  showScreen('resultScreen');
+}
+
+function calculateTotalCorrectChars() {
+  let total = 0;
+  const queue = state.problemQueue;
+  const loops = Math.floor(state.problemIndex / queue.length);
+  const rem = state.problemIndex % queue.length;
+  if (loops > 0) {
+    const sumAll = queue.reduce((s, p) => s + p.length, 0);
+    total += sumAll * loops;
+  }
+  for (let i = 0; i < rem; i++) total += queue[i].length;
+  return total;
+}
+
+document.querySelectorAll('.level-btn').forEach(btn => {
+  btn.addEventListener('click', () => startGame(btn.dataset.level));
+});
+
+document.getElementById('backBtn').addEventListener('click', () => {
+  if (confirm('정말 돌아가시겠습니까? 현재 진행 상황은 저장되지 않습니다.')) {
+    state.isGameActive = false;
+    if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
+    isComposing = false;
+    lastCommittedValue = '';
+    const inp = document.getElementById('typingInput');
+    if (inp) { inp.blur(); inp.value = ''; }
+    showScreen('startScreen');
+  }
+});
+
+document.getElementById('retryBtn').addEventListener('click', () => startGame(state.level));
+document.getElementById('homeBtn').addEventListener('click', () => showScreen('startScreen'));
+
+document.addEventListener('touchmove', (e) => {
+  if (e.touches.length > 1) e.preventDefault();
+}, { passive: false });
+
+let lastTouchEnd = 0;
+document.addEventListener('touchend', (e) => {
+  const now = Date.now();
+  if (now - lastTouchEnd < 300) e.preventDefault();
+  lastTouchEnd = now;
+}, false);
+</script>
+
+</body>
+</html>
