@@ -435,7 +435,7 @@
       <button class="level-btn" data-level="diph">
         <span class="emoji">🔡</span>
         이중모음
-        <span class="sub">ㅐ ㅔ ㅘ ㅝ ㅢ 등</span>
+        <span class="sub">ㅒ ㅖ ㅘ ㅙ ㅚ 등</span>
       </button>
       <button class="level-btn" data-level="word">
         <span class="emoji">📝</span>
@@ -522,9 +522,9 @@ const PROBLEMS = {
   twin: [
     'ㄲ','ㄸ','ㅃ','ㅆ','ㅉ'
   ],
-  // 이중모음 11개
+  // 이중모음 9개 (ㅐ,ㅔ는 단모음이라 제외)
   diph: [
-    'ㅐ','ㅒ','ㅔ','ㅖ','ㅘ','ㅙ','ㅚ','ㅝ','ㅞ','ㅟ','ㅢ'
+    'ㅒ','ㅖ','ㅘ','ㅙ','ㅚ','ㅝ','ㅞ','ㅟ','ㅢ'
   ],
   word: [
     // 학생 이름 5
@@ -869,10 +869,13 @@ function isPartialMatch(typedChar, targetChar) {
   // 예: 목표 "닭"(종성 ㄺ), 입력 "달"(종성 ㄹ) → ㄹ이 ㄺ의 시작이므로 허용
   if (isComposableJong(yd.jong, td.jong)) return true;
 
-  // 역방향: 입력 종성이 목표 종성의 확장 (IME가 다음 글자 초성을 종성에 붙인 경우)
-  // 예: 목표 "굴"(종성 ㄹ), 입력 "굷"(종성 ㄼ) → ㄹ에 ㅂ이 붙어 ㄼ이 됨
-  // 이 경우는 validateInput의 받침 이어치기 로직에서 처리하므로 여기선 false
-  // (여기서 true 반환하면 목표 글자 자체와 일치로 판정되어 잘못됨)
+  // 역방향: 입력 종성이 목표 종성에서 확장된 복합종성인 경우
+  // 예: 목표 "책"(종성 ㄱ), 입력 "챇"(종성 ㄳ) → ㄳ = ㄱ+ㅅ, ㄱ이 목표 종성
+  // 이건 받침 이어치기의 중간 상태. 다음 글자 초성 검증은 validateInput에서 하므로
+  // 여기서는 "복합종성의 첫 자모가 목표 종성과 일치하면 허용"
+  const split = splitDoubleJong(yd.jong);
+  if (split && split[0] === td.jong) return true;
+
   return false;
 }
 
@@ -884,11 +887,15 @@ function isDoubleConsonantBase(typed, target) {
   return doubleMap[target] === typed;
 }
 
-// 이중모음 조합 중간 단계 (예: 'ㅘ' 입력 중에 'ㅗ'이 먼저 들어옴)
+// 이중모음 조합 중간 단계
 function isDiphthongBase(typed, target) {
   const diphMap = {
-    'ㅘ': ['ㅗ'], 'ㅙ': ['ㅗ','ㅐ','ㅘ'], 'ㅚ': ['ㅗ'],
-    'ㅝ': ['ㅜ'], 'ㅞ': ['ㅜ','ㅔ','ㅝ'], 'ㅟ': ['ㅜ'],
+    'ㅘ': ['ㅗ'],
+    'ㅙ': ['ㅗ'],           // ㅗ+ㅐ만 허용
+    'ㅚ': ['ㅗ'],
+    'ㅝ': ['ㅜ'],
+    'ㅞ': ['ㅜ'],           // ㅜ+ㅔ만 허용
+    'ㅟ': ['ㅜ'],
     'ㅢ': ['ㅡ']
   };
   return diphMap[target] && diphMap[target].includes(typed);
