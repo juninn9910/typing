@@ -660,6 +660,7 @@ let state = {
 // IME 조합 상태 (전역 - 여러 함수에서 참조)
 let isComposing = false;
 let lastCommittedValue = '';
+let isAdvancing = false; // 자동 진행 중 중복 호출 방지
 
 const CHO = ['ㄱ','ㄲ','ㄴ','ㄷ','ㄸ','ㄹ','ㅁ','ㅂ','ㅃ','ㅅ','ㅆ','ㅇ','ㅈ','ㅉ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ'];
 const JUNG = ['ㅏ','ㅐ','ㅑ','ㅒ','ㅓ','ㅔ','ㅕ','ㅖ','ㅗ','ㅘ','ㅙ','ㅚ','ㅛ','ㅜ','ㅝ','ㅞ','ㅟ','ㅠ','ㅡ','ㅢ','ㅣ'];
@@ -729,6 +730,7 @@ function startGame(level) {
   if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
   isComposing = false;
   lastCommittedValue = '';
+  isAdvancing = false;
 
   initAudio();
   state.level = level;
@@ -860,9 +862,18 @@ function isPartialMatch(typedChar, targetChar) {
   }
 
   // 중성까지 일치 → 종성 검사
-  if (yd.jong === '') return true;
-  if (yd.jong === td.jong) return true;
-  return isComposableJong(yd.jong, td.jong);
+  if (yd.jong === '') return true; // 조합 중 (종성 미입력)
+  if (yd.jong === td.jong) return true; // 완전 일치
+
+  // 종성 조합 진행 중 (단종성 → 복합종성 방향)
+  // 예: 목표 "닭"(종성 ㄺ), 입력 "달"(종성 ㄹ) → ㄹ이 ㄺ의 시작이므로 허용
+  if (isComposableJong(yd.jong, td.jong)) return true;
+
+  // 역방향: 입력 종성이 목표 종성의 확장 (IME가 다음 글자 초성을 종성에 붙인 경우)
+  // 예: 목표 "굴"(종성 ㄹ), 입력 "굷"(종성 ㄼ) → ㄹ에 ㅂ이 붙어 ㄼ이 됨
+  // 이 경우는 validateInput의 받침 이어치기 로직에서 처리하므로 여기선 false
+  // (여기서 true 반환하면 목표 글자 자체와 일치로 판정되어 잘못됨)
+  return false;
 }
 
 // 쌍자음 조합 중간 단계 (예: 'ㄲ' 입력 중에 'ㄱ'이 먼저 들어옴)
@@ -917,19 +928,34 @@ function validateInput(value) {
   }
 
   // 2차: 받침 이어치기 케이스 검사
-  // 예: 목표 "사랑" / 현재 "사" 확정 상태에서 'ㄹ' 입력 → IME가 "살"로 조합
-  //     "살"을 분해하면 '사' + 'ㄹ'이고, 'ㄹ'은 다음 목표 '랑'의 초성이므로 허용
   if (completedLen + 1 < target.length) {
     const yd = decomposeChar(lastChar);
     if (yd && yd.jong !== '') {
-      // 현재 완성글자(종성 제외)가 목표와 일치하는지
       const withoutJong = composeChar(yd.cho, yd.jung, '');
-      if (withoutJong === targetAtPos) {
-        // 종성이 다음 목표 글자의 초성과 일치하는지
-        const nextTarget = target[completedLen + 1];
-        const ntd = decomposeChar(nextTarget);
-        if (ntd && yd.jong === ntd.cho) {
+      const nextTarget = target[completedLen + 1];
+      const ntd = decomposeChar(nextTarget);
+
+      if (withoutJong === targetAtPos && ntd) {
+        // Case A: 단일 종성이 다음 글자 초성과 일치
+        // 예: "사랑" → "살"(사+ㄹ) → ㄹ === '랑'의 초성 ㄹ
+        if (yd.jong === ntd.cho) {
           return { valid: true, value: value };
+        }
+      }
+
+      // Case B: 복합종성 이어치기
+      // 예: "굴비" → "굷"(굴+ㅂ) → 종성 ㄼ = 목표 종성 ㄹ + 다음 초성 ㅂ
+      // 목표 글자의 종성 + 다음 글자 초성이 합쳐져서 복합종성이 된 경우
+      const td = decomposeChar(targetAtPos);
+      if (td && ntd) {
+        const composedWithTargetJong = composeChar(yd.cho, yd.jung, td.jong);
+        if (composedWithTargetJong === targetAtPos) {
+          // 초성+중성은 목표와 일치하고, 종성만 다름
+          // 입력 종성이 "목표 종성 + 다음 초성"의 복합종성인지 확인
+          const split = splitDoubleJong(yd.jong);
+          if (split && split[0] === td.jong && split[1] === ntd.cho) {
+            return { valid: true, value: value };
+          }
         }
       }
     }
@@ -945,6 +971,19 @@ function composeChar(cho, jung, jong) {
   const jongIdx = JONG.indexOf(jong || '');
   if (choIdx < 0 || jungIdx < 0 || jongIdx < 0) return null;
   return String.fromCharCode(0xAC00 + choIdx * 588 + jungIdx * 28 + jongIdx);
+}
+
+// 복합종성을 (첫 종성, 둘째 종성)으로 분해
+// 예: 'ㄼ' → ['ㄹ','ㅂ'], 'ㄳ' → ['ㄱ','ㅅ']
+function splitDoubleJong(jong) {
+  const map = {
+    'ㄳ': ['ㄱ','ㅅ'],
+    'ㄵ': ['ㄴ','ㅈ'], 'ㄶ': ['ㄴ','ㅎ'],
+    'ㄺ': ['ㄹ','ㄱ'], 'ㄻ': ['ㄹ','ㅁ'], 'ㄼ': ['ㄹ','ㅂ'],
+    'ㄽ': ['ㄹ','ㅅ'], 'ㄾ': ['ㄹ','ㅌ'], 'ㄿ': ['ㄹ','ㅍ'], 'ㅀ': ['ㄹ','ㅎ'],
+    'ㅄ': ['ㅂ','ㅅ']
+  };
+  return map[jong] || null;
 }
 
 function checkComplete(value) { return value === state.currentProblem; }
@@ -983,26 +1022,39 @@ function isStrictMode() {
   return ['jamo', 'twin', 'diph', 'word'].includes(state.level);
 }
 
-// 문장 단계 - 차단 없이 자유 입력, 완성 시에만 정답 체크
+// 자모 단계 여부 (1글자 목표 - IME 리셋 필요)
+function isJamoLevel() {
+  return ['jamo', 'twin', 'diph'].includes(state.level);
+}
+
+// 문장/자모 단계 - 차단 없이 자유 입력, 완성 시에만 정답 체크
 function handleFreeInput(e) {
-  if (!state.isGameActive) return;
+  if (!state.isGameActive || isAdvancing) return;
   const currentValue = e.target.value;
   const target = state.currentProblem;
 
-  // 시각적 피드백 - 앞에서부터 일치하는 부분까지 done, 나머지는 pending으로 표시
+  // 시각적 피드백
   renderProblemLoose(currentValue, target);
   const matched = matchedPrefixLength(currentValue, target);
   updateProgress(Math.min(matched / target.length, 1));
 
-  // 정답 완성
+  // 정답 완성 체크
   if (currentValue === target) {
-    if (!isComposing) {
+    if (isJamoLevel()) {
+      // 자모 단계: 조합 중이어도 즉시 진행 (IME 리셋)
+      forceCompleteAndAdvance();
+    } else if (!isComposing) {
+      // 문장 단계: 조합 완료 후에만 진행
+      isAdvancing = true;
       state.totalSolved++;
       state.totalCorrect++;
       state.problemIndex++;
       updateStats();
       soundCorrect();
-      setTimeout(() => { if (state.isGameActive) loadProblem(); }, 400);
+      setTimeout(() => {
+        isAdvancing = false;
+        if (state.isGameActive) loadProblem();
+      }, 400);
     }
   }
 }
@@ -1036,7 +1088,7 @@ input.addEventListener('compositionstart', () => {
 
 input.addEventListener('compositionend', (e) => {
   isComposing = false;
-  if (!state.isGameActive) return;
+  if (!state.isGameActive || isAdvancing) return;
 
   // 문장 단계는 자유 입력
   if (!isStrictMode()) {
@@ -1044,7 +1096,7 @@ input.addEventListener('compositionend', (e) => {
     return;
   }
 
-  // 자모/단어 단계 - 엄격 검증
+  // 엄격 모드 (자모+단어) - 조합 완료 후 검증
   const currentValue = e.target.value;
   const previousValue = lastCommittedValue;
   const result = validateInput(currentValue);
@@ -1064,23 +1116,25 @@ input.addEventListener('compositionend', (e) => {
   if (result.value.length > previousValue.length) soundKey();
 
   if (checkComplete(result.value)) {
-    handleCorrectComplete();
+    if (isJamoLevel()) forceCompleteAndAdvance();
+    else handleCorrectComplete();
   }
 });
 
 input.addEventListener('input', (e) => {
-  if (!state.isGameActive) return;
+  if (!state.isGameActive || isAdvancing) return;
 
-  // 문장 단계는 자유 입력 (조합 중/조합 외 모두)
+  // 문장 단계는 자유 입력
   if (!isStrictMode()) {
     handleFreeInput(e);
     return;
   }
 
+  // 엄격 모드 (자모+단어)
   const currentValue = e.target.value;
 
   if (isComposing) {
-    // 조합 중: 부분 일치 검증
+    // 조합 중: 검증하되, 유효하면 시각적 피드백만
     const result = validateInput(currentValue);
     if (!result.valid) {
       e.target.value = result.value;
@@ -1090,12 +1144,10 @@ input.addEventListener('input', (e) => {
       triggerWrong(e.target);
       return;
     }
-
     renderProblem(result.value);
     updateProgress(result.value.length / state.currentProblem.length);
 
-    // 자모 단계: 조합 중이라도 정답과 일치하면 즉시 다음 문제로
-    // (한글 IME가 단일 자모를 확정하지 않고 조합 중 상태로 유지하는 문제 해결)
+    // 자모 단계: 조합 중이라도 정답이면 즉시 진행
     if (isJamoLevel() && checkComplete(result.value)) {
       forceCompleteAndAdvance();
     }
@@ -1120,17 +1172,16 @@ input.addEventListener('input', (e) => {
   if (result.value.length > 0) soundKey();
 
   if (checkComplete(result.value)) {
-    handleCorrectComplete();
+    if (isJamoLevel()) forceCompleteAndAdvance();
+    else handleCorrectComplete();
   }
 });
 
-// 자모 단계 여부 (목표가 1글자 자모)
-function isJamoLevel() {
-  return ['jamo', 'twin', 'diph'].includes(state.level);
-}
-
 // 조합 중 강제 완료 처리 - IME를 리셋하고 다음 문제로
 function forceCompleteAndAdvance() {
+  if (isAdvancing) return;
+  isAdvancing = true;
+
   // 통계 업데이트
   state.totalSolved++;
   state.totalCorrect++;
@@ -1138,13 +1189,15 @@ function forceCompleteAndAdvance() {
   updateStats();
   soundCorrect();
 
-  // IME 조합 상태 강제 종료 (input을 잠깐 blur → focus)
+  // IME 조합 상태 강제 종료
   const inp = document.getElementById('typingInput');
   inp.blur();
+  inp.value = '';
   isComposing = false;
   lastCommittedValue = '';
 
   setTimeout(() => {
+    isAdvancing = false;
     if (!state.isGameActive) return;
     loadProblem();
     inp.focus();
