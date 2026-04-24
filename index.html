@@ -268,6 +268,19 @@
   }
   .problem-text .char.pending { color: #b0bec5; }
 
+  .problem-card.correct {
+    box-shadow:
+      0 0 30px rgba(38, 198, 218, 0.5),
+      0 8px 28px rgba(26, 58, 92, 0.12);
+    transition: box-shadow 0.3s;
+  }
+  .problem-text .char.alldone {
+    color: #26c6da;
+    text-shadow: 0 0 12px rgba(38, 198, 218, 0.5);
+    transform: scale(1.05);
+    transition: all 0.2s;
+  }
+
   .input-area { width: 90%; max-width: 920px; }
   #typingInput {
     width: 100%;
@@ -797,16 +810,32 @@ function loadProblem() {
   lastCommittedValue = '';
   isComposing = false;
   updateProgress(0);
+  // 카드 빛남 효과 제거
+  const card = document.querySelector('.problem-card');
+  if (card) card.classList.remove('correct');
 }
 
 function renderProblem(typed) {
   const target = state.currentProblem;
   const pt = document.getElementById('problemText');
   let html = '';
+
+  // 자모 단계: 목표 1글자, 입력 중이지만 아직 불완전하면 current(노란) 표시
+  const isJamo = isJamoLevel && typeof isJamoLevel === 'function' && isJamoLevel();
+  const isInputComplete = typed === target;
+
   for (let i = 0; i < target.length; i++) {
     let cls = 'pending';
-    if (i < typed.length) cls = 'done';
-    else if (i === typed.length) cls = 'current';
+    if (isInputComplete) {
+      cls = 'done';
+    } else if (isJamo && typed.length > 0 && i === 0) {
+      // 자모 단계: 뭔가 입력 중이지만 아직 미완성 → current(노란)
+      cls = 'current';
+    } else if (i < typed.length) {
+      cls = 'done';
+    } else if (i === typed.length) {
+      cls = 'current';
+    }
     const ch = target[i] === ' ' ? '&nbsp;' : target[i];
     html += `<span class="char ${cls}">${ch}</span>`;
   }
@@ -1014,14 +1043,62 @@ function triggerWrong(el) {
 }
 
 function handleCorrectComplete() {
+  if (isAdvancing) return;
+  triggerCorrectAndAdvance(false);
+}
+
+// 정답 시 시각적 피드백 → 대기 → 다음 문제
+// isJamo: 자모 단계면 IME 리셋 필요
+function triggerCorrectAndAdvance(isJamo) {
+  if (isAdvancing) return;
+  isAdvancing = true;
+
+  // 1. 통계 즉시 업데이트
   state.totalSolved++;
   state.totalCorrect++;
   state.problemIndex++;
   updateStats();
   soundCorrect();
+
+  // 2. 문제 텍스트를 전부 초록색(done)으로 → 정답 확인 시각 피드백
+  renderProblemAllDone();
+  updateProgress(1);
+
+  // 3. 600ms 대기 후 다음 문제로
   setTimeout(() => {
-    if (state.isGameActive) loadProblem();
-  }, 400);
+    if (isJamo) {
+      // 자모 단계: IME 리셋
+      const inp = document.getElementById('typingInput');
+      inp.blur();
+      inp.value = '';
+      isComposing = false;
+      lastCommittedValue = '';
+      setTimeout(() => {
+        isAdvancing = false; // 반드시 리셋
+        if (!state.isGameActive) return;
+        loadProblem();
+        inp.focus();
+      }, 50);
+    } else {
+      isAdvancing = false; // 반드시 리셋
+      if (state.isGameActive) loadProblem();
+    }
+  }, 600);
+}
+
+// 문제 텍스트 전부 초록색으로 (정답 완료 피드백)
+function renderProblemAllDone() {
+  const target = state.currentProblem;
+  const pt = document.getElementById('problemText');
+  let html = '';
+  for (let i = 0; i < target.length; i++) {
+    const ch = target[i] === ' ' ? '&nbsp;' : target[i];
+    html += `<span class="char alldone">${ch}</span>`;
+  }
+  pt.innerHTML = html;
+  // 카드 빛남 효과
+  const card = document.querySelector('.problem-card');
+  if (card) card.classList.add('correct');
 }
 
 // 차단 모드 여부 (자모·쌍자음·이중모음·단어 단계에서 오타 차단)
@@ -1048,22 +1125,20 @@ function handleFreeInput(e) {
   // 정답 완성 체크
   if (currentValue === target) {
     if (isJamoLevel()) {
-      // 자모 단계: 조합 중이어도 즉시 진행 (IME 리셋)
       forceCompleteAndAdvance();
     } else if (!isComposing) {
-      // 문장 단계: 조합 완료 후에만 진행
-      isAdvancing = true;
-      state.totalSolved++;
-      state.totalCorrect++;
-      state.problemIndex++;
-      updateStats();
-      soundCorrect();
-      setTimeout(() => {
-        isAdvancing = false;
-        if (state.isGameActive) loadProblem();
-      }, 400);
+      triggerCorrectAndAdvance(false);
     }
   }
+}
+
+// 엄격 모드 시각 피드백: 문장 단계와 동일하게 노란불 표시
+// 앞에서부터 일치하는 부분 = 초록, 현재 위치 = 노란, 나머지 = 회색
+function renderStrictFeedback(typed) {
+  const target = state.currentProblem;
+  renderProblemLoose(typed, target);
+  const matched = matchedPrefixLength(typed, target);
+  updateProgress(Math.min(matched / target.length, 1));
 }
 
 // 앞에서부터 몇 글자까지 일치하는지
@@ -1111,15 +1186,13 @@ input.addEventListener('compositionend', (e) => {
   if (!result.valid) {
     e.target.value = result.value;
     lastCommittedValue = result.value;
-    renderProblem(result.value);
-    updateProgress(result.value.length / state.currentProblem.length);
+    renderStrictFeedback(result.value);
     triggerWrong(e.target);
     return;
   }
 
   lastCommittedValue = result.value;
-  renderProblem(result.value);
-  updateProgress(result.value.length / state.currentProblem.length);
+  renderStrictFeedback(result.value);
   if (result.value.length > previousValue.length) soundKey();
 
   if (checkComplete(result.value)) {
@@ -1146,13 +1219,11 @@ input.addEventListener('input', (e) => {
     if (!result.valid) {
       e.target.value = result.value;
       lastCommittedValue = result.value;
-      renderProblem(result.value);
-      updateProgress(result.value.length / state.currentProblem.length);
+      renderStrictFeedback(result.value);
       triggerWrong(e.target);
       return;
     }
-    renderProblem(result.value);
-    updateProgress(result.value.length / state.currentProblem.length);
+    renderStrictFeedback(result.value);
 
     // 자모 단계: 조합 중이라도 정답이면 즉시 진행
     if (isJamoLevel() && checkComplete(result.value)) {
@@ -1167,15 +1238,13 @@ input.addEventListener('input', (e) => {
   if (!result.valid) {
     e.target.value = result.value;
     lastCommittedValue = result.value;
-    renderProblem(result.value);
-    updateProgress(result.value.length / state.currentProblem.length);
+    renderStrictFeedback(result.value);
     triggerWrong(e.target);
     return;
   }
 
   lastCommittedValue = result.value;
-  renderProblem(result.value);
-  updateProgress(result.value.length / state.currentProblem.length);
+  renderStrictFeedback(result.value);
   if (result.value.length > 0) soundKey();
 
   if (checkComplete(result.value)) {
@@ -1184,31 +1253,9 @@ input.addEventListener('input', (e) => {
   }
 });
 
-// 조합 중 강제 완료 처리 - IME를 리셋하고 다음 문제로
+// 조합 중 강제 완료 = triggerCorrectAndAdvance(true) 호출
 function forceCompleteAndAdvance() {
-  if (isAdvancing) return;
-  isAdvancing = true;
-
-  // 통계 업데이트
-  state.totalSolved++;
-  state.totalCorrect++;
-  state.problemIndex++;
-  updateStats();
-  soundCorrect();
-
-  // IME 조합 상태 강제 종료
-  const inp = document.getElementById('typingInput');
-  inp.blur();
-  inp.value = '';
-  isComposing = false;
-  lastCommittedValue = '';
-
-  setTimeout(() => {
-    isAdvancing = false;
-    if (!state.isGameActive) return;
-    loadProblem();
-    inp.focus();
-  }, 400);
+  triggerCorrectAndAdvance(true);
 }
 
 // 붙여넣기·드래그앤드롭 차단
@@ -1263,6 +1310,7 @@ document.querySelectorAll('.level-btn').forEach(btn => {
 document.getElementById('backBtn').addEventListener('click', () => {
   if (confirm('정말 돌아가시겠습니까? 현재 진행 상황은 저장되지 않습니다.')) {
     state.isGameActive = false;
+    isAdvancing = false;
     if (state.timerInterval) { clearInterval(state.timerInterval); state.timerInterval = null; }
     isComposing = false;
     lastCommittedValue = '';
@@ -1278,13 +1326,6 @@ document.getElementById('homeBtn').addEventListener('click', () => showScreen('s
 document.addEventListener('touchmove', (e) => {
   if (e.touches.length > 1) e.preventDefault();
 }, { passive: false });
-
-let lastTouchEnd = 0;
-document.addEventListener('touchend', (e) => {
-  const now = Date.now();
-  if (now - lastTouchEnd < 300) e.preventDefault();
-  lastTouchEnd = now;
-}, false);
 
 // 초기 로드 시 시작 화면이므로 body에 스크롤 허용 클래스 부여
 document.body.classList.add('start-active');
